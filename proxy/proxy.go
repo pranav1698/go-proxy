@@ -8,38 +8,55 @@ import (
 	"net/http"
 	// "net/http/httputil"
 	"io/ioutil"
+	"sync"
 )
 
-var conf config.Config = config.Config{
-	ServerUrl: "http://localhost:9001",
+type ProxyServer struct {
+	wg *sync.WaitGroup
+	conf config.Config
+	port string
 }
 
-func StartProxyServer() {
+
+func NewProxyServer(wg *sync.WaitGroup, conf config.Config) ProxyServer {
+	return ProxyServer {
+		wg: wg,
+		port: ":9000",
+		conf: conf,
+	}
+}
+
+func (ps ProxyServer) StartProxyServer() {
+	defer ps.wg.Done()
+	
 	log.Println("Starting Proxy Server")
 
 	r := gin.Default()
 
-	r.GET("/", HandleProxy)
+	r.GET("/", ps.HandleProxy)
 
 	r.Run(":9000")
 }
 
-func HandleProxy(c *gin.Context) {
+func (ps ProxyServer) HandleProxy(c *gin.Context) {
 	log.Println("Request to endpoint: ", c.Request.Host)
 
-	req, err := http.NewRequest(c.Request.Method, conf.ServerUrl, c.Request.Body)
+	// creating a new http request
+	req, err := http.NewRequest(c.Request.Method, ps.conf.ServerUrl, c.Request.Body)
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	req.Header = c.Request.Header.Clone()
 	req.URL.RawQuery = c.Request.URL.RawQuery
 
+	// so that the request does not hang out
 	client := http.Client{
 		Timeout: 5*time.Second,
 	}
 
-	log.Println("Forwarding Request Data to ", conf.ServerUrl)
+	log.Println("Forwarding Request Data to ", ps.conf.ServerUrl)
+
+	// making the http request
 	resp, err := client.Do(req)
 	if err!= nil {
 		log.Println(err)
@@ -47,28 +64,6 @@ func HandleProxy(c *gin.Context) {
 		c.Writer.Write([]byte("Error in forwarding request\n"))
 		return
 	}
-
-	// respData, err := httputil.DumpResponse(resp, true)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	c.Writer.WriteHeader(http.StatusInternalServerError)
-	// 	c.Writer.Write([]byte("Error in forwarding request\n"))
-	// 	return
-	// }
-
-	// log.Println("Got Response from Server: ", string(respData))
-
-	// for k, v := range resp.Header {
-	// 	c.Writer.Header()[k] = v
-	// }
-
-	// _, err = io.Copy(c.Writer, resp.Body)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	c.Writer.WriteHeader(http.StatusInternalServerError)
-	// 	c.Writer.Write([]byte("Error in forwarding request\n"))
-	// 	return
-	// }
 
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
