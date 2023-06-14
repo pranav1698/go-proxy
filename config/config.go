@@ -1,5 +1,10 @@
 package config
 
 type Config struct {
-	ServerUrl string
+	CacheHost string
+	CachePort string
+	Password string
+	DB int
+	
+	ProxyPort string
 }
